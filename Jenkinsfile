@@ -8,7 +8,7 @@ pipeline {
 
     environment {
         PROJECT_NAME = 'Python Calculator'
-        EMAIL_RECIPIENTS = 'your.email@example.com'  // ← CHANGE THIS!
+        EMAIL_RECIPIENTS = 'sandeep.arora313@gmail.com'  // ← CHANGE THIS!
     }
 
     stages {
