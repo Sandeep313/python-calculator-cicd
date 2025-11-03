@@ -1,9 +1,10 @@
 pipeline {
-    agent any  // ← Changed from docker to any
+    agent any
 
     environment {
         PROJECT_NAME = 'Python Calculator'
         EMAIL_RECIPIENTS = 'sandeep.arora313@gmail.com'
+        VENV_DIR = 'venv'
     }
 
     stages {
@@ -17,7 +18,7 @@ pipeline {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     sh 'ls -la'
-                    sh 'python3 --version || echo "Python check"'
+                    sh 'python3 --version'
                 }
             }
         }
@@ -26,16 +27,21 @@ pipeline {
             steps {
                 script {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "🔧 Installing dependencies"
+                    echo "🔧 Creating virtual environment and installing dependencies"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     sh '''
-                        python3 -m pip install --upgrade pip
-                        python3 -m pip install -r requirements.txt
-                        python3 -m pip list
+                        # Create virtual environment
+                        python3 -m venv ${VENV_DIR}
+
+                        # Activate and install dependencies
+                        . ${VENV_DIR}/bin/activate
+                        pip install --upgrade pip
+                        pip install -r requirements.txt
+                        pip list
                     '''
 
-                    echo "✅ Dependencies installed"
+                    echo "✅ Dependencies installed in virtual environment"
                 }
             }
         }
@@ -48,7 +54,10 @@ pipeline {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     def lintResult = sh(
-                        script: 'python3 -m flake8 src tests --max-line-length=100 --statistics',
+                        script: '''
+                            . ${VENV_DIR}/bin/activate
+                            flake8 src tests --max-line-length=100 --statistics
+                        ''',
                         returnStatus: true
                     )
 
@@ -71,8 +80,9 @@ pipeline {
 
                     def securityResult = sh(
                         script: '''
-                            python3 -m bandit -r src/ -f json -o security-report.json || true
-                            python3 -m bandit -r src/ -f txt
+                            . ${VENV_DIR}/bin/activate
+                            bandit -r src/ -f json -o security-report.json || true
+                            bandit -r src/ -f txt
                         ''',
                         returnStatus: true
                     )
@@ -97,7 +107,8 @@ pipeline {
 
                     def testResult = sh(
                         script: '''
-                            python3 -m pytest tests/ -v \
+                            . ${VENV_DIR}/bin/activate
+                            pytest tests/ -v \
                                 --junitxml=test-results/junit.xml \
                                 --html=test-results/report.html \
                                 --self-contained-html \
@@ -127,7 +138,10 @@ pipeline {
                     echo "📊 Test Coverage Summary"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                    sh 'python3 -m coverage report'
+                    sh '''
+                        . ${VENV_DIR}/bin/activate
+                        coverage report
+                    '''
 
                     echo "✅ Coverage analysis complete"
                 }
@@ -170,6 +184,9 @@ pipeline {
                 echo "Status: ${currentBuild.result ?: 'SUCCESS'}"
                 echo "Duration: ${currentBuild.durationString}"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                // Cleanup virtual environment
+                sh 'rm -rf ${VENV_DIR} || true'
             }
         }
 
