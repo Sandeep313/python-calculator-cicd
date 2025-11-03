@@ -1,14 +1,9 @@
 pipeline {
-    agent {
-        docker {
-            image 'python:3.9'
-            args '-u root'
-        }
-    }
+    agent any  // ← Changed from docker to any
 
     environment {
         PROJECT_NAME = 'Python Calculator'
-        EMAIL_RECIPIENTS = 'sandeep.arora313@gmail.com'  // ← CHANGE THIS!
+        EMAIL_RECIPIENTS = 'sandeep.arora313@gmail.com'
     }
 
     stages {
@@ -21,9 +16,8 @@ pipeline {
                     echo "Branch: ${env.GIT_BRANCH}"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                    // Code is already checked out by Jenkins
                     sh 'ls -la'
-                    sh 'python --version'
+                    sh 'python3 --version || echo "Python check"'
                 }
             }
         }
@@ -36,9 +30,9 @@ pipeline {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     sh '''
-                        pip install --upgrade pip
-                        pip install -r requirements.txt
-                        pip list
+                        python3 -m pip install --upgrade pip
+                        python3 -m pip install -r requirements.txt
+                        python3 -m pip list
                     '''
 
                     echo "✅ Dependencies installed"
@@ -54,7 +48,7 @@ pipeline {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     def lintResult = sh(
-                        script: 'flake8 src tests --max-line-length=100 --statistics',
+                        script: 'python3 -m flake8 src tests --max-line-length=100 --statistics',
                         returnStatus: true
                     )
 
@@ -77,8 +71,8 @@ pipeline {
 
                     def securityResult = sh(
                         script: '''
-                            bandit -r src/ -f json -o security-report.json
-                            bandit -r src/ -f txt
+                            python3 -m bandit -r src/ -f json -o security-report.json || true
+                            python3 -m bandit -r src/ -f txt
                         ''',
                         returnStatus: true
                     )
@@ -103,7 +97,7 @@ pipeline {
 
                     def testResult = sh(
                         script: '''
-                            pytest tests/ -v \
+                            python3 -m pytest tests/ -v \
                                 --junitxml=test-results/junit.xml \
                                 --html=test-results/report.html \
                                 --self-contained-html \
@@ -133,7 +127,7 @@ pipeline {
                     echo "📊 Test Coverage Summary"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                    sh 'coverage report'
+                    sh 'python3 -m coverage report'
 
                     echo "✅ Coverage analysis complete"
                 }
@@ -171,7 +165,7 @@ pipeline {
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "📋 PIPELINE SUMMARY"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                echo "Project: ${PROJECT_NAME}"
+                echo "Project: ${env.PROJECT_NAME}"
                 echo "Build: #${BUILD_NUMBER}"
                 echo "Status: ${currentBuild.result ?: 'SUCCESS'}"
                 echo "Duration: ${currentBuild.durationString}"
@@ -183,7 +177,6 @@ pipeline {
             script {
                 echo "🎉 ✅ Pipeline succeeded!"
 
-                // Send success email
                 emailext (
                     subject: "✅ Build SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     body: """
@@ -191,7 +184,7 @@ pipeline {
 
                         <h3>Build Information:</h3>
                         <ul>
-                            <li><b>Project:</b> ${PROJECT_NAME}</li>
+                            <li><b>Project:</b> ${env.PROJECT_NAME}</li>
                             <li><b>Job:</b> ${env.JOB_NAME}</li>
                             <li><b>Build Number:</b> #${env.BUILD_NUMBER}</li>
                             <li><b>Duration:</b> ${currentBuild.durationString}</li>
@@ -209,7 +202,7 @@ pipeline {
                         <p><a href="${env.BUILD_URL}">View Build Details</a></p>
                         <p><a href="${env.BUILD_URL}console">View Console Output</a></p>
                     """,
-                    to: "${EMAIL_RECIPIENTS}",
+                    to: "${env.EMAIL_RECIPIENTS}",
                     mimeType: 'text/html'
                 )
             }
@@ -219,7 +212,6 @@ pipeline {
             script {
                 echo "💥 ❌ Pipeline failed!"
 
-                // Send failure email
                 emailext (
                     subject: "❌ Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     body: """
@@ -227,7 +219,7 @@ pipeline {
 
                         <h3>Build Information:</h3>
                         <ul>
-                            <li><b>Project:</b> ${PROJECT_NAME}</li>
+                            <li><b>Project:</b> ${env.PROJECT_NAME}</li>
                             <li><b>Job:</b> ${env.JOB_NAME}</li>
                             <li><b>Build Number:</b> #${env.BUILD_NUMBER}</li>
                             <li><b>Duration:</b> ${currentBuild.durationString}</li>
@@ -240,7 +232,7 @@ pipeline {
                         <p><a href="${env.BUILD_URL}">View Build Details</a></p>
                         <p><a href="${env.BUILD_URL}console">View Console Output</a></p>
                     """,
-                    to: "${EMAIL_RECIPIENTS}",
+                    to: "${env.EMAIL_RECIPIENTS}",
                     mimeType: 'text/html'
                 )
             }
@@ -250,7 +242,6 @@ pipeline {
             script {
                 echo "⚠️  Pipeline completed with warnings"
 
-                // Send warning email
                 emailext (
                     subject: "⚠️  Build UNSTABLE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
                     body: """
@@ -258,7 +249,7 @@ pipeline {
 
                         <h3>Build Information:</h3>
                         <ul>
-                            <li><b>Project:</b> ${PROJECT_NAME}</li>
+                            <li><b>Project:</b> ${env.PROJECT_NAME}</li>
                             <li><b>Job:</b> ${env.JOB_NAME}</li>
                             <li><b>Build Number:</b> #${env.BUILD_NUMBER}</li>
                             <li><b>Duration:</b> ${currentBuild.durationString}</li>
@@ -269,7 +260,7 @@ pipeline {
 
                         <p><a href="${env.BUILD_URL}">View Build Details</a></p>
                     """,
-                    to: "${EMAIL_RECIPIENTS}",
+                    to: "${env.EMAIL_RECIPIENTS}",
                     mimeType: 'text/html'
                 )
             }
