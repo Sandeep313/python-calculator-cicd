@@ -8,7 +8,7 @@ pipeline {
 
     environment {
         PROJECT_NAME = 'Python Calculator'
-        PYTHON_VERSION = '3.9'
+        EMAIL_RECIPIENTS = 'your.email@example.com'  // ← CHANGE THIS!
     }
 
     stages {
@@ -18,11 +18,10 @@ pipeline {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                     echo "📋 Checking out ${PROJECT_NAME}"
                     echo "Build: #${BUILD_NUMBER}"
+                    echo "Branch: ${env.GIT_BRANCH}"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                    // In real scenario with Git:
-                    // checkout scm
-
+                    // Code is already checked out by Jenkins
                     sh 'ls -la'
                     sh 'python --version'
                 }
@@ -42,7 +41,7 @@ pipeline {
                         pip list
                     '''
 
-                    echo "✅ Dependencies installed successfully"
+                    echo "✅ Dependencies installed"
                 }
             }
         }
@@ -51,15 +50,46 @@ pipeline {
             steps {
                 script {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "🔍 Running code quality checks"
+                    echo "🔍 Running flake8 linting"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                    sh '''
-                        echo "Running flake8..."
-                        flake8 src tests --max-line-length=100 --statistics || true
-                    '''
+                    def lintResult = sh(
+                        script: 'flake8 src tests --max-line-length=100 --statistics',
+                        returnStatus: true
+                    )
 
-                    echo "✅ Code quality check completed"
+                    if (lintResult == 0) {
+                        echo "✅ Code quality check passed"
+                    } else {
+                        echo "⚠️  Linting found issues"
+                        currentBuild.result = 'UNSTABLE'
+                    }
+                }
+            }
+        }
+
+        stage('🔒 Security Scan') {
+            steps {
+                script {
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                    echo "🔒 Running Bandit security scan"
+                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                    def securityResult = sh(
+                        script: '''
+                            bandit -r src/ -f json -o security-report.json
+                            bandit -r src/ -f txt
+                        ''',
+                        returnStatus: true
+                    )
+
+                    if (securityResult == 0) {
+                        echo "✅ No security issues found"
+                    } else {
+                        echo "⚠️  Security scan found potential issues"
+                        echo "Check security-report.json for details"
+                        currentBuild.result = 'UNSTABLE'
+                    }
                 }
             }
         }
@@ -68,7 +98,7 @@ pipeline {
             steps {
                 script {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "🧪 Running unit tests"
+                    echo "🧪 Running unit tests with coverage"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     def testResult = sh(
@@ -88,31 +118,29 @@ pipeline {
                     if (testResult == 0) {
                         echo "✅ All tests passed!"
                     } else {
-                        echo "❌ Some tests failed!"
-                        currentBuild.result = 'UNSTABLE'
+                        echo "❌ Tests failed!"
+                        currentBuild.result = 'FAILURE'
+                        error("Test execution failed")
                     }
                 }
             }
         }
 
-        stage('📊 Test Coverage') {
+        stage('📊 Coverage Report') {
             steps {
                 script {
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "📊 Analyzing test coverage"
+                    echo "📊 Test Coverage Summary"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                    sh '''
-                        echo "Test Coverage Summary:"
-                        coverage report
-                    '''
+                    sh 'coverage report'
 
-                    echo "✅ Coverage analysis completed"
+                    echo "✅ Coverage analysis complete"
                 }
             }
         }
 
-        stage('📦 Build Package') {
+        stage('📦 Build Artifact') {
             steps {
                 script {
                     def timestamp = sh(
@@ -120,51 +148,18 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
-                    def packageName = "calculator-${timestamp}-build${BUILD_NUMBER}.tar.gz"
+                    def artifactName = "calculator-${timestamp}-build${BUILD_NUMBER}.tar.gz"
 
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "📦 Creating package"
-                    echo "Name: ${packageName}"
+                    echo "📦 Creating artifact: ${artifactName}"
                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                     sh """
-                        tar -czf ${packageName} \
-                            src/ \
-                            requirements.txt \
-                            README.md
-
-                        echo "Package created:"
-                        ls -lh ${packageName}
+                        tar -czf ${artifactName} src/ requirements.txt README.md
+                        ls -lh ${artifactName}
                     """
 
-                    echo "✅ Package created successfully"
-                }
-            }
-        }
-
-        stage('📝 Generate Reports') {
-            steps {
-                script {
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                    echo "📝 Generating build report"
-                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-                    sh '''
-                        echo "Build Report" > build-report.txt
-                        echo "=============" >> build-report.txt
-                        echo "" >> build-report.txt
-                        echo "Build Number: ${BUILD_NUMBER}" >> build-report.txt
-                        echo "Build Date: $(date)" >> build-report.txt
-                        echo "Python Version: ${PYTHON_VERSION}" >> build-report.txt
-                        echo "" >> build-report.txt
-                        echo "Test Results:" >> build-report.txt
-                        echo "-------------" >> build-report.txt
-                        coverage report >> build-report.txt
-
-                        cat build-report.txt
-                    '''
-
-                    echo "✅ Reports generated"
+                    echo "✅ Artifact created"
                 }
             }
         }
@@ -177,27 +172,107 @@ pipeline {
                 echo "📋 PIPELINE SUMMARY"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                 echo "Project: ${PROJECT_NAME}"
-                echo "Job: ${JOB_NAME}"
                 echo "Build: #${BUILD_NUMBER}"
                 echo "Status: ${currentBuild.result ?: 'SUCCESS'}"
                 echo "Duration: ${currentBuild.durationString}"
                 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-                // Archive artifacts
-                sh 'ls -R test-results/ htmlcov/ || true'
             }
         }
 
         success {
-            echo "🎉 ✅ Pipeline completed successfully!"
+            script {
+                echo "🎉 ✅ Pipeline succeeded!"
+
+                // Send success email
+                emailext (
+                    subject: "✅ Build SUCCESS: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2 style="color: green;">✅ Build Successful!</h2>
+
+                        <h3>Build Information:</h3>
+                        <ul>
+                            <li><b>Project:</b> ${PROJECT_NAME}</li>
+                            <li><b>Job:</b> ${env.JOB_NAME}</li>
+                            <li><b>Build Number:</b> #${env.BUILD_NUMBER}</li>
+                            <li><b>Duration:</b> ${currentBuild.durationString}</li>
+                            <li><b>Branch:</b> ${env.GIT_BRANCH}</li>
+                        </ul>
+
+                        <h3>Results:</h3>
+                        <ul>
+                            <li>✅ Code Quality: Passed</li>
+                            <li>✅ Security Scan: Passed</li>
+                            <li>✅ Unit Tests: Passed</li>
+                            <li>✅ Coverage: Complete</li>
+                        </ul>
+
+                        <p><a href="${env.BUILD_URL}">View Build Details</a></p>
+                        <p><a href="${env.BUILD_URL}console">View Console Output</a></p>
+                    """,
+                    to: "${EMAIL_RECIPIENTS}",
+                    mimeType: 'text/html'
+                )
+            }
         }
 
         failure {
-            echo "💥 ❌ Pipeline failed!"
+            script {
+                echo "💥 ❌ Pipeline failed!"
+
+                // Send failure email
+                emailext (
+                    subject: "❌ Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2 style="color: red;">❌ Build Failed!</h2>
+
+                        <h3>Build Information:</h3>
+                        <ul>
+                            <li><b>Project:</b> ${PROJECT_NAME}</li>
+                            <li><b>Job:</b> ${env.JOB_NAME}</li>
+                            <li><b>Build Number:</b> #${env.BUILD_NUMBER}</li>
+                            <li><b>Duration:</b> ${currentBuild.durationString}</li>
+                            <li><b>Branch:</b> ${env.GIT_BRANCH}</li>
+                        </ul>
+
+                        <h3>Action Required:</h3>
+                        <p>Please check the console output for detailed error information.</p>
+
+                        <p><a href="${env.BUILD_URL}">View Build Details</a></p>
+                        <p><a href="${env.BUILD_URL}console">View Console Output</a></p>
+                    """,
+                    to: "${EMAIL_RECIPIENTS}",
+                    mimeType: 'text/html'
+                )
+            }
         }
 
         unstable {
-            echo "⚠️  Pipeline completed with warnings"
+            script {
+                echo "⚠️  Pipeline completed with warnings"
+
+                // Send warning email
+                emailext (
+                    subject: "⚠️  Build UNSTABLE: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        <h2 style="color: orange;">⚠️  Build Unstable</h2>
+
+                        <h3>Build Information:</h3>
+                        <ul>
+                            <li><b>Project:</b> ${PROJECT_NAME}</li>
+                            <li><b>Job:</b> ${env.JOB_NAME}</li>
+                            <li><b>Build Number:</b> #${env.BUILD_NUMBER}</li>
+                            <li><b>Duration:</b> ${currentBuild.durationString}</li>
+                        </ul>
+
+                        <h3>Warnings:</h3>
+                        <p>Build completed but some checks reported issues. Please review.</p>
+
+                        <p><a href="${env.BUILD_URL}">View Build Details</a></p>
+                    """,
+                    to: "${EMAIL_RECIPIENTS}",
+                    mimeType: 'text/html'
+                )
+            }
         }
     }
 }
